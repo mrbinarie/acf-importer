@@ -1,4 +1,4 @@
-# WordPress Simple Plugin: ACF CSV Import
+# WordPress Simple Plugin: ACF Importer
 
 This WordPress plugin simplifies the process of importing CSV data into Advanced Custom Fields (ACF) repeater fields by adding a button directly under the ACF repeater field. 
 
