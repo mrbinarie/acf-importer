@@ -1,9 +1,9 @@
 <?php
 /*
-Plugin Name:  ACF Import Exporter
-Plugin URI:   https://github.com/mrbinarie
-Description:  ACF Repeater field's import exporter
-Version:      1.0
+Plugin Name:  ACF Importer
+Plugin URI:   https://github.com/mrbinarie/acf-importer
+Description:  ACF Repeater Field Import Tool
+Version:      1.1
 Author:       mrbinarie
 Author URI:   https://github.com/mrbinarie
 License:      GPL2
@@ -43,30 +43,46 @@ function render_repeater_field_block($field) {
     <script>
         jQuery(document).ready(function($) { // Pass jQuery as $ inside the function
             let field_name = '<?= $field['name'] ?>';
-            $('div[data-name="'+field_name+'"]').append(`<hr>
-                <textarea class="acf-importer" rows="5" placeholder="input excel data" 
-                    style="margin-bottom: 5px; resize: none"
-                    data-import-textarea="${field_name}"></textarea>
-            <button class="button button-primary" type="button" data-import-button="${field_name}">Import</button>`);
+            $('div[data-name="'+field_name+'"]').append(`
+                <input type="file" data-import-file="${field_name}" accept=".csv" style="display: none;">
+                <button class="button button-primary" type="button" data-import-button="${field_name}">Import from CSV</button>`);
 
-            $('[data-import-button="'+field_name+'"]').on('click', function() {
-                let import_textare_val = $('[data-import-textarea="'+field_name+'"]').val();
-                
-                let list = [];
+            let input_import = $('[data-import-file="'+field_name+'"]');
+            let button_import = $('[data-import-button="'+field_name+'"]');
 
-                let textarea_rows = import_textare_val.split("\n");
-                $.each(textarea_rows, function(key, value) {
-                    let columns = value.split("\t");
-                    list.push(columns);
-                });
+            button_import.click(function () {
+                input_import.click();
+            });
+
+            input_import.change(function (event) {
+                const file = event.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = function (e) {
+                        const csvContent = e.target.result;
+                        displayCSVContent(csvContent);
+                    };
+                    reader.readAsText(file);
+                }
+            });
+
+            function displayCSVContent(input_import_content)
+            {
+                let list = parseCSV(input_import_content);
+console.log(list)
+                // let textarea_rows = input_import_content.split("\n");
+                // $.each(textarea_rows, function(key, value) {
+                //     let columns = value.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g);
+                //     list.push(columns);
+                // });
                 
                 // add empty rows
                 let add_row_button = $('div[data-name="'+field_name+'').find('[data-event="add-row"]');
                 let rows_table = $('div[data-name="'+field_name+'').find('table > tbody');
                 let rows_table_trs = rows_table.find('tr');
-                console.log(textarea_rows.length, rows_table_trs.length)
-                if(textarea_rows.length > rows_table_trs.length) {
-                    for(let i=0; i!=(textarea_rows.length - rows_table_trs.length); i++) {
+                console.log(list.length, rows_table_trs.length)
+                if(list.length > rows_table_trs.length) {
+                    for(let i=0; i!=(list.length - rows_table_trs.length); i++) {
                         add_row_button[0].click();
                     }
                 }
@@ -83,7 +99,37 @@ function render_repeater_field_block($field) {
                         $(input_element).attr('value', list[table_tr_key][input_key])
                     });
                 });
-            })
+            }
+
+            function parseCSV(csv)
+            {
+                var lines = csv.split(/\r?\n/); // Split by new line
+                var result = [];
+
+                // Start from the second line (index 1) to skip headers
+                for (var i = 0; i < lines.length; i++) {
+                    var obj = {};
+                    var currentLine = lines[i].split(',');
+
+                    // Loop through each column in the current line
+                    for (var j = 0; j < currentLine.length; j++) {
+                        // Check if the value exists and starts with a quote
+                        if (currentLine[j] && currentLine[j].startsWith('"')) {
+                            // Join values that contain a comma until we have a balanced number of quotes
+                            while (!currentLine[j].endsWith('"') && j < currentLine.length - 1) {
+                                currentLine[j] += ',' + currentLine[j + 1];
+                                currentLine.splice(j + 1, 1);
+                            }
+                            currentLine[j] = currentLine[j].substring(1, currentLine[j].length - 1);
+                        }
+                        // Assuming no headers, just use index as keys
+                        obj[j] = currentLine[j];
+                    }
+                    result.push(obj);
+                }
+                return result;
+            }
+
         });
     </script>
     <?php
