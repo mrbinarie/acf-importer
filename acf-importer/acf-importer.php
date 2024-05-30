@@ -3,7 +3,7 @@
 Plugin Name:  ACF Importer
 Plugin URI:   https://github.com/mrbinarie/acf-importer
 Description:  ACF Repeater Field Import Tool
-Version:      1.2
+Version:      1.3
 Author:       mrbinarie
 Author URI:   https://github.com/mrbinarie
 License:      GPL2
@@ -162,7 +162,16 @@ function wp_simple_form_page() {
     ?>
     <div class="wrap">
         <h1>ACF Import</h1>
-        <?php if (isset($_GET['status']) && $_GET['status'] === 'success'): ?>
+        <?php if(isset($_GET['status']) && $_GET['status'] == 'error' && isset($_GET['message'])): ?>
+            <?php 
+                $messages = urldecode($_GET['message']);
+            ?>
+            <?php foreach(explode("|", $messages) as $message): ?>
+                <div class="notice notice-error is-dismissible">
+                        <p><?= esc_html($message) ?></p>
+                </div>
+            <?php endforeach ?>
+        <?php elseif (isset($_GET['status']) && $_GET['status'] === 'success'): ?>
             <div class="notice notice-success is-dismissible">
                 <p>Form submitted successfully!</p>
             </div>
@@ -190,33 +199,52 @@ function wp_simple_form_page() {
 }
 
 // Handle form submission
-function wp_simple_form_handle()
-{
-    if (isset($_POST['post_id']) && isset($_POST['post_id']))
-    {
+function wp_simple_form_handle() {
+    $errors = [];
+    if (isset($_POST['post_id']) && isset($_POST['post_id'])) {
         $post_id = sanitize_text_field($_POST['post_id']);
         $field_name = sanitize_text_field($_POST['acf_field_name']);
-        if (isset($_FILES['file'])) {
+        
+        // Check if the post exists
+        if (!get_post($post_id)) {
+            $errors[] = "Post does not exist.";
+        }
+
+        // Check if the ACF field exists
+        if (!get_field_object($field_name, $post_id)) {
+            $errors[] = "ACF field does not exist.";
+        }
+
+        // Process file upload if no errors so far
+        if (isset($_FILES['file']) && isset($_FILES['file']['tmp_name']) && !empty($_FILES['file']['tmp_name'])) {
             $fileType = mime_content_type($_FILES['file']['tmp_name']);
             if ($fileType == 'text/csv' || $fileType == 'application/vnd.ms-excel') {
-
                 $fileContents = file_get_contents($_FILES['file']['tmp_name']);
-                if($fileContents !== FALSE) {
+                if ($fileContents !== FALSE) {
                     $sub_fields = get_acf_repeater_data_dynamic($post_id, $field_name);
                     $data = parse_csv($fileContents, $sub_fields);
                     import_acf_repeater_data($post_id, $field_name, $data);
                 } else {
-                    $messsage = "Error opening the file.";
-                    wp_redirect(admin_url('admin.php?page=wp-acf-import-form&status=error&message=' . $messsage));
-                    exit;
+                    $errors[] = "Error opening the file.";
                 }
+            } else {
+                $errors[] = "Invalid file type.";
             }
+        } else {
+            $errors[] = "File not provided.";
         }
-        
-        // Redirect after submission
-        wp_redirect(admin_url('admin.php?page=wp-acf-import-form&status=success'));
-        exit;
+    } else {
+        $errors[] = "Unknown error.";
     }
+
+    // Redirect based on the error status
+    if(!empty($errors)) {
+        $message = implode("|", $errors);
+        wp_redirect(admin_url('admin.php?page=wp-acf-import-form&status=error&message=' . urlencode($message)));
+    } else {
+        wp_redirect(admin_url('admin.php?page=wp-acf-import-form&status=success'));
+    }
+    exit;
 }
 
 function parse_csv($csv, $sub_fields)
