@@ -204,6 +204,7 @@ function wp_simple_form_handle() {
     if (isset($_POST['post_id']) && isset($_POST['post_id'])) {
         $post_id = sanitize_text_field($_POST['post_id']);
         $field_name = sanitize_text_field($_POST['acf_field_name']);
+        $field_key = 'tesst';
         
         // Check if the post exists
         if (!get_post($post_id)) {
@@ -211,22 +212,41 @@ function wp_simple_form_handle() {
         }
 
         // Check if the ACF field exists
+        $field = get_field_object($field_name, $post_id);
+        $field_key = $field['key'];
         if (!get_field_object($field_name, $post_id)) {
             $errors[] = "ACF field does not exist.";
         }
 
         // Process file upload if no errors so far
-        if (isset($_FILES['file']) && isset($_FILES['file']['tmp_name']) && !empty($_FILES['file']['tmp_name'])) {
+        if (empty($errors) && isset($_FILES['file']) && isset($_FILES['file']['tmp_name']) && !empty($_FILES['file']['tmp_name'])) {
             $fileType = mime_content_type($_FILES['file']['tmp_name']);
             if ($fileType == 'text/csv' || $fileType == 'application/vnd.ms-excel') {
-                $fileContents = file_get_contents($_FILES['file']['tmp_name']);
-                if ($fileContents !== FALSE) {
-                    $sub_fields = get_acf_repeater_data_dynamic($post_id, $field_name);
-                    $data = parse_csv($fileContents, $sub_fields);
-                    import_acf_repeater_data($post_id, $field_name, $data);
-                } else {
-                    $errors[] = "Error opening the file.";
+
+                $sub_fields = get_acf_repeater_data_dynamic($post_id, $field_key);
+
+                $file = fopen($_FILES['file']['tmp_name'], 'r');
+                if (!$file) {
+                    die('Error opening file');
                 }
+                
+                delete_field($field_name, $post_id);
+
+                $count = 0;
+                while (($row = fgetcsv($file)) !== false) {
+                    $repeater_row = [];
+                    foreach($row as $key => $value) {
+                        $repeater_row[ $sub_fields[$key] ] = $value;
+                    }
+
+                    $count++;
+                    if($count == 1) continue;
+
+                    add_row($field_name, $repeater_row, $post_id);
+                }
+                fclose($file);
+
+                // echo "<pre>"; print_r($data);
             } else {
                 $errors[] = "Invalid file type.";
             }
@@ -245,37 +265,6 @@ function wp_simple_form_handle() {
         wp_redirect(admin_url('admin.php?page=wp-acf-import-form&status=success'));
     }
     exit;
-}
-
-function parse_csv($csv, $sub_fields)
-{
-    $lines = preg_split('/\r\n|\r|\n/', $csv); // Split by new line
-    $result = [];
-
-    // Loop through each line
-    foreach ($lines as $line) {
-        $obj = [];
-        $currentLine = explode(',', $line);
-
-        // Loop through each column in the current line
-        for ($j = 0; $j < count($currentLine); $j++) {
-            // Check if the value exists and starts with a quote
-            if (!empty($currentLine[$j]) && $currentLine[$j][0] == '"') {
-                // Join values that contain a comma until we have a balanced number of quotes
-                while ($j < count($currentLine) - 1 && substr($currentLine[$j], -1) != '"') {
-                    $currentLine[$j] .= ',' . $currentLine[$j + 1];
-                    array_splice($currentLine, $j + 1, 1);
-                }
-                $currentLine[$j] = substr($currentLine[$j], 1, -1);
-            }
-            // Assuming no headers, just use index as keys
-            $obj[$sub_fields[$j]] = $currentLine[$j];
-        }
-        if(count($obj) == count($sub_fields))
-            $result[] = $obj;
-    }
-
-    return $result;
 }
 
 function import_acf_repeater_data($post_id, $field_name, $data) {
